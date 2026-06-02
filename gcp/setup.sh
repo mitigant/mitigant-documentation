@@ -171,9 +171,12 @@ echo ""
 echo "Binding role to service account..."
 echo ""
 
+# --condition=None is required when the project IAM policy already contains
+# condition-based bindings; without it gcloud refuses in non-interactive mode.
 gcloud projects add-iam-policy-binding "$PROJECT_ID" \
   --member="serviceAccount:${SA_EMAIL}" \
   --role="projects/${PROJECT_ID}/roles/${ROLE_NAME}" \
+  --condition=None \
   --quiet
 
 echo "Role bound."
