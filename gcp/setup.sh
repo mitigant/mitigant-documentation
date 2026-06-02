@@ -63,13 +63,34 @@ ROLE_NAME="mitigant_attack_emulation_${SUFFIX}"
 KEY_FILE="mitigant-attack-emulation-${SUFFIX}-key.json"
 
 # ── Permissions ───────────────────────────────────────────────────────────────
+# Two sets are combined into one custom role:
+#
+# DETECTION (read-only, validated at connect time by RequiredPermissionsCheck):
+#   Covers CSPM security posture monitoring across IAM, Compute, API Keys,
+#   Networking and Storage.
+#
+# VERIFICATION (write, used during attack execution):
+#   Covers the 10 Phase-1 CAE attacks — IAM privilege escalation, subnet
+#   flow-log tampering, storage exposure, and secret retrieval.
 
 PERMISSIONS=(
+  # DETECTION — read
   resourcemanager.projects.get
   resourcemanager.projects.getIamPolicy
+  iam.serviceAccounts.list
+  iam.serviceAccountKeys.list
+  apikeys.keys.list
+  compute.instances.list
+  compute.instanceGroupManagers.list
+  compute.projects.get
+  compute.firewalls.list
+  compute.backendServices.list
+  storage.buckets.list
+  storage.buckets.getIamPolicy
+
+  # VERIFICATION — write
   resourcemanager.projects.setIamPolicy
   iam.serviceAccounts.get
-  iam.serviceAccounts.list
   iam.serviceAccounts.create
   iam.serviceAccounts.delete
   iam.serviceAccounts.getIamPolicy
@@ -81,8 +102,6 @@ PERMISSIONS=(
   compute.subnetworks.list
   compute.subnetworks.update
   storage.buckets.get
-  storage.buckets.list
-  storage.buckets.getIamPolicy
   storage.buckets.setIamPolicy
   storage.buckets.update
   storage.objects.get
@@ -177,7 +196,7 @@ gcloud projects add-iam-policy-binding "$PROJECT_ID" \
   --member="serviceAccount:${SA_EMAIL}" \
   --role="projects/${PROJECT_ID}/roles/${ROLE_NAME}" \
   --condition=None \
-  --quiet
+  --quiet > /dev/null
 
 echo "Role bound."
 echo ""
