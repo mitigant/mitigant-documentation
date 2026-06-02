@@ -1,6 +1,5 @@
 # Mitigant Documentation — Code Owners
 # Changes to onboarding scripts require review from a Mitigant maintainer.
-# Add Nils's GitHub username alongside @SyCode7 once confirmed.
 
 # GCP onboarding script — highest sensitivity, requires explicit sign-off
 gcp/setup.sh @SyCode7
