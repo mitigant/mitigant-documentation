@@ -13,6 +13,24 @@
 
 set -euo pipefail
 
+# ── Helpers ───────────────────────────────────────────────────────────────────
+
+generate_suffix() {
+  LC_ALL=C tr -dc 'a-z0-9' < /dev/urandom | head -c 4
+}
+
+# GCP project IDs: lowercase letters, numbers, hyphens; 6-30 chars; must start
+# and end with a letter or number. Validate before touching any GCP resource.
+validate_project_id() {
+  local id="$1"
+  if [[ ! "$id" =~ ^[a-z0-9][a-z0-9-]{4,28}[a-z0-9]$ ]]; then
+    echo "Error: '$id' is not a valid GCP Project ID."
+    echo "       Must be 6-30 characters, lowercase letters, numbers and hyphens only,"
+    echo "       and must start and end with a letter or number."
+    exit 1
+  fi
+}
+
 # ── Suffix generation ─────────────────────────────────────────────────────────
 # A unique 4-character lowercase alphanumeric suffix is appended to every
 # resource name so that multiple onboarding runs on the same project never
@@ -23,10 +41,6 @@ set -euo pipefail
 #   SA_NAME   : lowercase letters, numbers, hyphens (6-30 chars)
 #   ROLE_NAME : letters, numbers, underscores only — no hyphens (3-64 chars)
 #   KEY_FILE  : local filename only, no GCP constraint
-
-generate_suffix() {
-  LC_ALL=C tr -dc 'a-z0-9' < /dev/urandom | head -c 4
-}
 
 SUFFIX=$(generate_suffix)
 
@@ -90,6 +104,7 @@ echo ""
 
 if [[ -n "${PROJECT_ID:-}" ]]; then
   echo "Project ID received from Mitigant: $PROJECT_ID"
+  validate_project_id "$PROJECT_ID"
   gcloud config set project "$PROJECT_ID" --quiet
 else
   CURRENT_PROJECT=$(gcloud config get-value project 2>/dev/null || true)
@@ -105,6 +120,7 @@ else
   else
     read -r -p "Enter your GCP Project ID: " PROJECT_ID
   fi
+  validate_project_id "$PROJECT_ID"
   gcloud config set project "$PROJECT_ID" --quiet
 fi
 
