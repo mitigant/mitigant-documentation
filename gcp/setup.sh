@@ -15,8 +15,12 @@ set -euo pipefail
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
+# openssl rand -hex 2 generates 2 random bytes as 4 lowercase hex characters.
+# Avoids the tr|head SIGPIPE problem that silently kills the script under
+# set -euo pipefail (head exits after 4 bytes, tr receives SIGPIPE, pipeline
+# returns non-zero, set -e aborts before any output is printed).
 generate_suffix() {
-  LC_ALL=C tr -dc 'a-z0-9' < /dev/urandom | head -c 4
+  openssl rand -hex 2
 }
 
 # GCP project IDs: lowercase letters, numbers, hyphens; 6-30 chars; must start
@@ -32,10 +36,10 @@ validate_project_id() {
 }
 
 # ── Suffix generation ─────────────────────────────────────────────────────────
-# A unique 4-character lowercase alphanumeric suffix is appended to every
-# resource name so that multiple onboarding runs on the same project never
-# collide. Keep a record of the suffix shown at the end in case you need to
-# identify or remove these resources later.
+# A unique 4-character suffix is appended to every resource name so that
+# multiple onboarding runs on the same project never collide. Keep a record
+# of the suffix shown at the end in case you need to identify or remove
+# these resources later.
 #
 # GCP naming constraints applied:
 #   SA_NAME   : lowercase letters, numbers, hyphens (6-30 chars)
