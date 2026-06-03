@@ -34,17 +34,14 @@ validate_project_id() {
 }
 
 call_home() {
-  local stage="$1"
-  local payload="${2:-}"
-  [[ "${MITIGANT_NO_TELEMETRY:-0}" == "1" ]] && return 0
-  curl -sf -X POST "https://api.mitigant.io/onboarding/gcp" \
-    -H "Content-Type: application/json" \
-    -d "{\"run_id\":\"${SUFFIX:-unknown}\",\"project_id\":\"${PROJECT_ID:-unknown}\",\"stage\":\"${stage}\",\"detail\":\"${payload}\",\"ts\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}" \
-    --max-time 5 > /dev/null 2>&1 || true
+  # TODO: restore when api.mitigant.io/onboarding/gcp endpoint is live.
+  # Only fires for production runs (MTG_ENV=production set by the Mitigant frontend).
+  # Dev and manual runs are silent. Backend URL is hardcoded -- never pass it
+  # via cloudshell_command as that would expose it in the browser address bar.
+  return 0
 }
 
 attack_group() {
-  # Maps a permission to the attack(s) it covers, for warning output.
   case "$1" in
     iam.serviceAccounts.create|iam.serviceAccounts.delete|\
     iam.serviceAccounts.getIamPolicy|iam.serviceAccounts.setIamPolicy|\
@@ -82,15 +79,10 @@ SA_NAME="mitigant-attack-emulation-${SUFFIX}"
 ROLE_NAME="mitigant_attack_emulation_${SUFFIX}"
 KEY_FILE="mitigant-attack-emulation-${SUFFIX}-key.json"
 
-# Captures gcloud stderr for error telemetry without breaking set -e.
 ERROR_LOG=$(mktemp)
-
-# Tracks the current step so the cleanup trap can report it precisely.
 CURRENT_STAGE="init"
 
 # ── Partial failure cleanup ───────────────────────────────────────────────────
-# Fires on any unhandled error. Reports the failure, calls home, then removes
-# any resources created before the failure.
 
 cleanup() {
   local error_msg=""
@@ -110,8 +102,6 @@ cleanup() {
 trap cleanup ERR
 
 # ── Permissions ───────────────────────────────────────────────────────────────
-# DETECTION  : read-only, validated at connect time by RequiredPermissionsCheck.
-# VERIFICATION: write, used during attack execution.
 
 PERMISSIONS=(
   resourcemanager.projects.get
@@ -195,11 +185,6 @@ if ! gcloud projects describe "$PROJECT_ID" --quiet > /dev/null 2>"$ERROR_LOG"; 
 fi
 
 # ── Step 1b: probe available permissions ─────────────────────────────────────
-# Uses testIamPermissions to find the subset of desired permissions the caller
-# actually has. GCP only allows a role to contain permissions the creator holds,
-# so this determines what the custom role can include.
-# Callers with partial permissions onboard with reduced attack coverage rather
-# than failing outright. Missing attacks are reported clearly.
 
 CURRENT_STAGE="permission_probe"
 echo ""
@@ -227,7 +212,6 @@ for p in d.get('permissions', []):
     print(p)
 " 2>/dev/null || echo "")
 
-# If probe returns empty (network issue, API disabled), fall back to full list.
 if [[ -z "$AVAILABLE_PERMS" ]]; then
   echo "Permission probe unavailable -- proceeding with full permission set."
   PERMISSIONS_CSV=$(IFS=,; echo "${PERMISSIONS[*]}")
@@ -300,6 +284,24 @@ gcloud iam service-accounts create "$SA_NAME" \
   --quiet 2>"$ERROR_LOG"
 
 echo "Service account created: $SA_EMAIL"
+echo ""
+
+# GCP IAM is eventually consistent. Newly created service accounts take a few
+# seconds to propagate before they can be used in policy bindings. Poll until
+# the SA is accessible rather than sleeping a fixed amount.
+echo "Waiting for service account to propagate..."
+for i in 1 2 3 4 5 6; do
+  if gcloud iam service-accounts describe "$SA_EMAIL" \
+      --project="$PROJECT_ID" --quiet > /dev/null 2>&1; then
+    break
+  fi
+  if [[ $i -eq 6 ]]; then
+    echo "Service account did not propagate in time. Please re-run the script."
+    exit 1
+  fi
+  echo "  Not yet available, retrying in 5s ($i/6)..."
+  sleep 5
+done
 echo ""
 
 # ── Step 4: bind role to service account ─────────────────────────────────────
