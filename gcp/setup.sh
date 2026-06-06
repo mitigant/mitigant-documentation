@@ -147,8 +147,19 @@ echo "  Run ID: $SUFFIX"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
 
+# PROJECT_ID resolution order:
+#   1. Environment variable (set directly, e.g. legacy cloudshell_command usage)
+#   2. Temp file written by cloudshell_command from the Mitigant onboarding button
+#   3. Interactive prompt (fallback for manual runs)
+
 if [[ -n "${PROJECT_ID:-}" ]]; then
   echo "Project ID received from Mitigant: $PROJECT_ID"
+  validate_project_id "$PROJECT_ID"
+  gcloud config set project "$PROJECT_ID" --quiet
+elif [[ -f /tmp/.mtg_project_id ]]; then
+  PROJECT_ID=$(tr -d '[:space:]' < /tmp/.mtg_project_id)
+  rm -f /tmp/.mtg_project_id
+  echo "Project ID loaded from Mitigant: $PROJECT_ID"
   validate_project_id "$PROJECT_ID"
   gcloud config set project "$PROJECT_ID" --quiet
 else
@@ -286,9 +297,7 @@ gcloud iam service-accounts create "$SA_NAME" \
 echo "Service account created: $SA_EMAIL"
 echo ""
 
-# GCP IAM is eventually consistent. Newly created service accounts take a few
-# seconds to propagate before they can be used in policy bindings. Poll until
-# the SA is accessible rather than sleeping a fixed amount.
+# GCP IAM is eventually consistent. Poll until the SA is accessible before binding.
 echo "Waiting for service account to propagate..."
 for i in 1 2 3 4 5 6; do
   if gcloud iam service-accounts describe "$SA_EMAIL" \
