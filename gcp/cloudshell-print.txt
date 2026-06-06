@@ -1,11 +1,13 @@
 To complete Mitigant GCP Attack Emulation setup:
 
+Have your GCP Project ID ready -- the script will ask for it.
+
 1. Run the setup script:
 
    bash setup.sh
 
-   The script will confirm your project ID and create the required
-   IAM role, service account, and JSON key automatically.
+   When prompted, enter your GCP Project ID (the same one you
+   entered in the Mitigant onboarding screen).
 
 2. Copy the JSON key printed between the separator lines at the end.
 
