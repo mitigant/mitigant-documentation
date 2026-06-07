@@ -165,10 +165,13 @@ elif [[ -f /tmp/.mtg_project_id ]]; then
 else
   CURRENT_PROJECT=$(gcloud config get-value project 2>/dev/null || true)
   if [[ -n "$CURRENT_PROJECT" ]]; then
-    echo "Active project: $CURRENT_PROJECT"
     echo ""
-    read -r -p "Is this the correct project? [y/N]: " confirm
-    if [[ "$confirm" =~ ^[Yy]$ ]]; then
+    echo "  ┌─────────────────────────────────────────────────────────────"
+    echo "  │  Active project: $CURRENT_PROJECT"
+    echo "  └─────────────────────────────────────────────────────────────"
+    echo ""
+    read -r -p "Use this project? [Y/n]: " confirm
+    if [[ -z "$confirm" || "$confirm" =~ ^[Yy]$ ]]; then
       PROJECT_ID="$CURRENT_PROJECT"
     else
       read -r -p "Enter the Project ID to use: " PROJECT_ID

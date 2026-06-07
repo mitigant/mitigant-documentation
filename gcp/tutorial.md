@@ -1,24 +1,47 @@
-# Mitigant — GCP Attack Emulation Setup
+# Mitigant: GCP Attack Emulation Setup
 
-This walkthrough sets up the least-privilege IAM role and service account
-Mitigant Cloud Attack Emulation needs to run in your project.
+This walkthrough provisions the least-privilege IAM role and service account
+Mitigant Cloud Attack Emulation needs in your project. Takes about 2 minutes.
 
-**Time:** ~2 minutes
-**What it creates:** one custom IAM role, one service account, one JSON key
+**Creates:** one custom IAM role, one service account, one JSON key.
+All resources are named `mitigant-attack-emulation-{suffix}` for easy
+identification in Cloud Audit Logs.
+
+> **Running commands.** Each command in this walkthrough sits in a code
+> block with two icons in the top-right corner. Click the left icon
+> (**Copy to Cloud Shell**, terminal-prompt symbol) to paste the command
+> into the terminal. The right icon (**Copy**) only copies to clipboard
+> and does not run anything.
 
 ---
 
-## Step 1 — Authorize Cloud Shell
+## Step 1: Authorize Cloud Shell
 
-If prompted, click **Authorize** to allow Cloud Shell to make API calls on
-your behalf. This is a standard Google prompt for any Cloud Shell session.
+If prompted, click **Authorize** to allow Cloud Shell to call Google APIs on
+your behalf. This is a standard Google prompt and is shown once per session.
 
 ---
 
-## Step 2 — Run the setup script
+## Step 2: Confirm your project
 
-The script runs automatically with your project ID pre-set.
-If the terminal is not already running, paste and execute:
+Run the command below to print the currently active GCP project ID:
+
+```bash
+gcloud config get-value project
+```
+
+The printed value should match the project ID shown on the Mitigant
+onboarding screen. If it does not, switch the active project:
+
+```bash
+gcloud config set project YOUR_PROJECT_ID
+```
+
+---
+
+## Step 3: Run the setup script
+
+Run the command below, then press **Enter** in the terminal:
 
 ```bash
 bash setup.sh
@@ -26,33 +49,26 @@ bash setup.sh
 
 The script will:
 
-1. Confirm the target project
-2. Create a `mitigant_attack_emulation_{suffix}` custom role (25 least-privilege permissions)
-3. Create a `mitigant-attack-emulation-{suffix}` service account
-4. Bind the role to the service account
-5. Generate and print a JSON key
-
-A unique 4-character suffix is appended to each resource name per run.
-The suffix and full resource names are printed to the terminal on completion.
+1. Show the active project and ask you to confirm. Press **Enter** to accept.
+2. Create the custom IAM role.
+3. Create the service account and bind the role.
+4. Generate and print a JSON key.
 
 ---
 
-## Step 3 — Copy the JSON key
+## Step 4: Copy the JSON key
 
-When the script finishes, it prints a JSON block between two separator lines.
-Select everything between the separators and copy it.
-
----
-
-## Step 4 — Return to Mitigant
-
-Paste the JSON key into the **Service Account Key** field in Mitigant
-and click **Connect**.
+When the script finishes it prints a JSON block between two separator lines.
+Select **everything between the separators** and copy.
 
 ---
 
-## Questions?
+## Step 5: Return to Mitigant
 
-Open an issue at
-[github.com/mitigant/mitigant-documentation](https://github.com/mitigant/mitigant-documentation)
-or contact support@mitigant.io.
+Paste the JSON key into the **Service Account Key** field on the Mitigant
+onboarding screen and click **Connect**.
+
+---
+
+Questions? Email <support@mitigant.io> or open an issue at
+[github.com/mitigant/mitigant-documentation](https://github.com/mitigant/mitigant-documentation).
