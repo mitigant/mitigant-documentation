@@ -51,13 +51,17 @@ bash setup.sh
 The script will:
 
 1. Show the active project and ask you to confirm. Press **Enter** to accept.
-2. Ask for your existing Mitigant CSPM service account email. On the
-   Mitigant onboarding screen, click the **Copy** button next to the
-   service account email, then paste it into the terminal and press **Enter**.
+2. Detect your existing Mitigant service account in the project, show
+   the email, and ask **"Add CAE permissions to this account? [Y/n]:"**.
+   Press **Enter** to accept.
 3. Create the custom IAM role with CAE permissions.
 4. Bind the role to your existing CSPM service account.
 
 No new service account is created. No new JSON key is needed.
+
+If the project happens to contain multiple service accounts (uncommon),
+the script will list them and ask you to enter the number of the one
+you want to add CAE permissions to.
 
 ---
 
