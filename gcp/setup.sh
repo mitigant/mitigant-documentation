@@ -136,6 +136,10 @@ PERMISSIONS=(
   secretmanager.secrets.get
   secretmanager.secrets.list
   secretmanager.versions.access
+  logging.sinks.list
+  logging.sinks.get
+  logging.sinks.create
+  logging.sinks.delete
 )
 
 # ── Step 1: confirm project ───────────────────────────────────────────────────
@@ -327,6 +331,16 @@ echo ""
 gcloud projects add-iam-policy-binding "$PROJECT_ID" \
   --member="serviceAccount:${SA_EMAIL}" \
   --role="projects/${PROJECT_ID}/roles/${ROLE_NAME}" \
+  --condition=None \
+  --quiet > /dev/null 2>"$ERROR_LOG"
+
+# resourcemanager.tagBindings.list is not grantable in custom roles, only via
+# the predefined roles/resourcemanager.tagViewer. Bind it separately so the
+# tag-based exemption filter can read tag bindings on individual resources
+# during attack target resolution.
+gcloud projects add-iam-policy-binding "$PROJECT_ID" \
+  --member="serviceAccount:${SA_EMAIL}" \
+  --role="roles/resourcemanager.tagViewer" \
   --condition=None \
   --quiet > /dev/null 2>"$ERROR_LOG"
 
