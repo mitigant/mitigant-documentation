@@ -268,33 +268,72 @@ fi
 
 # ── Step 1c: existing Mitigant CSPM service account check ───────────────────
 # When this project is already onboarded to Mitigant for CSPM, the customer
-# has a service account here that the FE shows on the onboarding screen.
-# We prefer adding CAE permissions to that existing SA over creating a new
-# one -- one Mitigant SA per project keeps the IAM footprint clean and the
-# existing CSPM JSON key continues to work.
+# has a service account here that we should reuse rather than creating a
+# duplicate. We list user-managed service accounts (filtering Google's own
+# default SAs) and prompt the customer to confirm. The vast majority of
+# projects will have at most one Mitigant SA, so the Y/n confirmation is the
+# happy path. Projects with multiple user-managed SAs (typically test
+# accounts) fall through to a numbered selection.
 
 CURRENT_STAGE="existing_account_check"
 echo ""
-echo "If you already onboarded this project to Mitigant for CSPM, we can"
-echo "add CAE permissions to that existing service account instead of"
-echo "creating a new one. The email is shown on the Mitigant onboarding"
-echo "screen with a Copy button next to it."
-echo ""
-read -r -p "Existing Mitigant CSPM service account email (press Enter to create new): " EXISTING_CSPM_SA_EMAIL
-EXISTING_CSPM_SA_EMAIL=$(echo "${EXISTING_CSPM_SA_EMAIL:-}" | tr -d '[:space:]')
+echo "Checking for an existing Mitigant service account in this project..."
 
-if [[ -n "$EXISTING_CSPM_SA_EMAIL" ]]; then
-  if ! gcloud iam service-accounts describe "$EXISTING_CSPM_SA_EMAIL" \
-      --project="$PROJECT_ID" --quiet > /dev/null 2>"$ERROR_LOG"; then
-    error_detail=$(head -2 "$ERROR_LOG" | tr '\n' ' ')
-    echo ""
-    echo "Error: service account '$EXISTING_CSPM_SA_EMAIL' not found in project '$PROJECT_ID'."
-    [[ -n "$error_detail" ]] && echo "       Detail: $error_detail"
-    exit 1
-  fi
-  SA_EMAIL="$EXISTING_CSPM_SA_EMAIL"
-  echo "Existing CSPM service account confirmed: $SA_EMAIL"
+EXISTING_USER_SAS=$(gcloud iam service-accounts list \
+  --project="$PROJECT_ID" \
+  --format="value(email)" 2>/dev/null \
+  | grep -Ev "@(developer|cloudservices|cloudbuild|appspot)\.gserviceaccount\.com$" \
+  || true)
+
+if [[ -z "$EXISTING_USER_SAS" ]]; then
+  CANDIDATE_COUNT=0
+else
+  CANDIDATE_COUNT=$(echo "$EXISTING_USER_SAS" | wc -l | tr -d ' ')
+fi
+
+if [[ "$CANDIDATE_COUNT" -eq 0 ]]; then
+  echo "No existing user-managed service accounts found. A new one will be created."
   echo ""
+elif [[ "$CANDIDATE_COUNT" -eq 1 ]]; then
+  CANDIDATE_SA="$EXISTING_USER_SAS"
+  echo ""
+  echo "Found one existing service account:"
+  echo ""
+  echo "  ┌─────────────────────────────────────────────────────────────"
+  echo "  │  $CANDIDATE_SA"
+  echo "  └─────────────────────────────────────────────────────────────"
+  echo ""
+  read -r -p "Add CAE permissions to this account? [Y/n]: " confirm
+  if [[ -z "$confirm" || "$confirm" =~ ^[Yy]$ ]]; then
+    EXISTING_CSPM_SA_EMAIL="$CANDIDATE_SA"
+    SA_EMAIL="$EXISTING_CSPM_SA_EMAIL"
+    echo "Will add CAE permissions to: $SA_EMAIL"
+    echo ""
+  else
+    echo "Will create a new service account."
+    echo ""
+  fi
+else
+  echo ""
+  echo "Found $CANDIDATE_COUNT existing service accounts:"
+  echo ""
+  i=1
+  while IFS= read -r sa; do
+    printf "  [%d] %s\n" "$i" "$sa"
+    i=$((i + 1))
+  done <<< "$EXISTING_USER_SAS"
+  echo ""
+  read -r -p "Add CAE permissions to which account? (enter a number, or press Enter to create new): " selection
+  if [[ -n "$selection" && "$selection" =~ ^[0-9]+$ \
+        && "$selection" -ge 1 && "$selection" -le "$CANDIDATE_COUNT" ]]; then
+    EXISTING_CSPM_SA_EMAIL=$(echo "$EXISTING_USER_SAS" | sed -n "${selection}p")
+    SA_EMAIL="$EXISTING_CSPM_SA_EMAIL"
+    echo "Will add CAE permissions to: $SA_EMAIL"
+    echo ""
+  else
+    echo "Will create a new service account."
+    echo ""
+  fi
 fi
 
 echo ""
