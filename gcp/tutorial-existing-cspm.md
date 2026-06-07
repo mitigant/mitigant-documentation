@@ -1,11 +1,12 @@
-# Mitigant: GCP Attack Emulation Setup
+# Mitigant: Enable CAE on an existing CSPM account
 
-This walkthrough provisions the least-privilege IAM role and service account
-Mitigant Cloud Attack Emulation needs in your project. Takes about 2 minutes.
+This walkthrough adds Cloud Attack Emulation (CAE) permissions to your
+existing Mitigant CSPM service account in this project. Takes about 1 minute.
 
-**Creates:** one custom IAM role, one service account, one JSON key.
-All resources are named `mitigant-attack-emulation-{suffix}` for easy
-identification in Cloud Audit Logs.
+**Modifies:** creates one custom IAM role and binds it (plus
+`roles/resourcemanager.tagViewer`) to your existing Mitigant CSPM service
+account. No new service account is created, and no new JSON key is
+generated. Your existing CSPM key gains CAE access once the role is bound.
 
 > **Running commands.** Each command in this walkthrough sits in a code
 > block with two icons in the top-right corner. Click the left icon
@@ -50,25 +51,21 @@ bash setup.sh
 The script will:
 
 1. Show the active project and ask you to confirm. Press **Enter** to accept.
-2. Ask if you have an existing Mitigant CSPM service account in this
-   project. Press **Enter** to skip (a new service account will be created).
-3. Create the custom IAM role.
-4. Create the service account and bind the role.
-5. Generate and print a JSON key.
+2. Ask for your existing Mitigant CSPM service account email. On the
+   Mitigant onboarding screen, click the **Copy** button next to the
+   service account email, then paste it into the terminal and press **Enter**.
+3. Create the custom IAM role with CAE permissions.
+4. Bind the role to your existing CSPM service account.
+
+No new service account is created. No new JSON key is needed.
 
 ---
 
-## Step 4: Copy the JSON key
+## Step 4: Return to Mitigant
 
-When the script finishes it prints a JSON block between two separator lines.
-Select **everything between the separators** and copy.
-
----
-
-## Step 5: Return to Mitigant
-
-Paste the JSON key into the **Service Account Key** field on the Mitigant
-onboarding screen and click **Connect**.
+When the script finishes, return to Mitigant and click **Connect**
+(or **Enable CAE**) on the onboarding screen. Your existing CSPM key
+already has CAE permissions through the role we just bound.
 
 ---
 

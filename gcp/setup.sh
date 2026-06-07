@@ -93,8 +93,12 @@ cleanup() {
   echo ""
   call_home "failure" "${CURRENT_STAGE}|${error_msg}"
   echo "Cleaning up partial resources..."
-  gcloud iam service-accounts delete "${SA_EMAIL:-placeholder@placeholder.com}" \
-    --quiet 2>/dev/null || true
+  # Only delete the SA if we created it. In the existing-CSPM flow the SA
+  # belonged to the customer before this run; never delete it.
+  if [[ -z "${EXISTING_CSPM_SA_EMAIL:-}" ]]; then
+    gcloud iam service-accounts delete "${SA_EMAIL:-placeholder@placeholder.com}" \
+      --quiet 2>/dev/null || true
+  fi
   gcloud iam roles delete "$ROLE_NAME" \
     --project="${PROJECT_ID:-}" --quiet 2>/dev/null || true
   rm -f "$ERROR_LOG"
@@ -262,11 +266,46 @@ else
   echo "All permissions available."
 fi
 
+# ── Step 1c: existing Mitigant CSPM service account check ───────────────────
+# When this project is already onboarded to Mitigant for CSPM, the customer
+# has a service account here that the FE shows on the onboarding screen.
+# We prefer adding CAE permissions to that existing SA over creating a new
+# one -- one Mitigant SA per project keeps the IAM footprint clean and the
+# existing CSPM JSON key continues to work.
+
+CURRENT_STAGE="existing_account_check"
+echo ""
+echo "If you already onboarded this project to Mitigant for CSPM, we can"
+echo "add CAE permissions to that existing service account instead of"
+echo "creating a new one. The email is shown on the Mitigant onboarding"
+echo "screen with a Copy button next to it."
+echo ""
+read -r -p "Existing Mitigant CSPM service account email (press Enter to create new): " EXISTING_CSPM_SA_EMAIL
+EXISTING_CSPM_SA_EMAIL=$(echo "${EXISTING_CSPM_SA_EMAIL:-}" | tr -d '[:space:]')
+
+if [[ -n "$EXISTING_CSPM_SA_EMAIL" ]]; then
+  if ! gcloud iam service-accounts describe "$EXISTING_CSPM_SA_EMAIL" \
+      --project="$PROJECT_ID" --quiet > /dev/null 2>"$ERROR_LOG"; then
+    error_detail=$(head -2 "$ERROR_LOG" | tr '\n' ' ')
+    echo ""
+    echo "Error: service account '$EXISTING_CSPM_SA_EMAIL' not found in project '$PROJECT_ID'."
+    [[ -n "$error_detail" ]] && echo "       Detail: $error_detail"
+    exit 1
+  fi
+  SA_EMAIL="$EXISTING_CSPM_SA_EMAIL"
+  echo "Existing CSPM service account confirmed: $SA_EMAIL"
+  echo ""
+fi
+
 echo ""
 echo "Project  : $PROJECT_ID"
 echo "Role     : $ROLE_NAME"
-echo "Account  : $SA_NAME"
-echo "Key file : $KEY_FILE"
+if [[ -n "${EXISTING_CSPM_SA_EMAIL:-}" ]]; then
+  echo "Account  : $SA_EMAIL (existing, CAE permissions will be added)"
+else
+  echo "Account  : $SA_NAME (new)"
+  echo "Key file : $KEY_FILE"
+fi
 echo ""
 
 call_home "start"
@@ -289,36 +328,40 @@ echo "Role created: projects/$PROJECT_ID/roles/$ROLE_NAME"
 echo ""
 
 # ── Step 3: create service account ───────────────────────────────────────────
+# Skipped in the existing-CSPM flow -- SA_EMAIL was set during the existing
+# account check above.
 
-CURRENT_STAGE="sa_create"
-echo "Creating service account..."
-echo ""
+if [[ -z "${EXISTING_CSPM_SA_EMAIL:-}" ]]; then
+  CURRENT_STAGE="sa_create"
+  echo "Creating service account..."
+  echo ""
 
-SA_EMAIL="${SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com"
+  SA_EMAIL="${SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com"
 
-gcloud iam service-accounts create "$SA_NAME" \
-  --project="$PROJECT_ID" \
-  --display-name="Mitigant Attack Emulation" \
-  --quiet 2>"$ERROR_LOG"
+  gcloud iam service-accounts create "$SA_NAME" \
+    --project="$PROJECT_ID" \
+    --display-name="Mitigant Attack Emulation" \
+    --quiet 2>"$ERROR_LOG"
 
-echo "Service account created: $SA_EMAIL"
-echo ""
+  echo "Service account created: $SA_EMAIL"
+  echo ""
 
-# GCP IAM is eventually consistent. Poll until the SA is accessible before binding.
-echo "Waiting for service account to propagate..."
-for i in 1 2 3 4 5 6; do
-  if gcloud iam service-accounts describe "$SA_EMAIL" \
-      --project="$PROJECT_ID" --quiet > /dev/null 2>&1; then
-    break
-  fi
-  if [[ $i -eq 6 ]]; then
-    echo "Service account did not propagate in time. Please re-run the script."
-    exit 1
-  fi
-  echo "  Not yet available, retrying in 5s ($i/6)..."
-  sleep 5
-done
-echo ""
+  # GCP IAM is eventually consistent. Poll until the SA is accessible before binding.
+  echo "Waiting for service account to propagate..."
+  for i in 1 2 3 4 5 6; do
+    if gcloud iam service-accounts describe "$SA_EMAIL" \
+        --project="$PROJECT_ID" --quiet > /dev/null 2>&1; then
+      break
+    fi
+    if [[ $i -eq 6 ]]; then
+      echo "Service account did not propagate in time. Please re-run the script."
+      exit 1
+    fi
+    echo "  Not yet available, retrying in 5s ($i/6)..."
+    sleep 5
+  done
+  echo ""
+fi
 
 # ── Step 4: bind role to service account ─────────────────────────────────────
 
@@ -348,14 +391,19 @@ echo "Role bound."
 echo ""
 
 # ── Step 5: create JSON key ───────────────────────────────────────────────────
+# Skipped in the existing-CSPM flow -- the SA already has a key that the
+# customer uploaded during CSPM onboarding; that same key gains CAE access
+# once the new role is bound.
 
-CURRENT_STAGE="key_create"
-echo "Generating JSON key..."
-echo ""
+if [[ -z "${EXISTING_CSPM_SA_EMAIL:-}" ]]; then
+  CURRENT_STAGE="key_create"
+  echo "Generating JSON key..."
+  echo ""
 
-gcloud iam service-accounts keys create "$KEY_FILE" \
-  --iam-account="$SA_EMAIL" \
-  --quiet 2>"$ERROR_LOG"
+  gcloud iam service-accounts keys create "$KEY_FILE" \
+    --iam-account="$SA_EMAIL" \
+    --quiet 2>"$ERROR_LOG"
+fi
 
 rm -f "$ERROR_LOG"
 call_home "success"
@@ -363,23 +411,37 @@ call_home "success"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "  Setup complete.  Run ID: $SUFFIX"
 echo ""
-echo "  Resources created in project: $PROJECT_ID"
-echo "    Role    : projects/$PROJECT_ID/roles/$ROLE_NAME"
-echo "    Account : $SA_EMAIL"
+if [[ -n "${EXISTING_CSPM_SA_EMAIL:-}" ]]; then
+  echo "  Updated resources in project: $PROJECT_ID"
+  echo "    Role    : projects/$PROJECT_ID/roles/$ROLE_NAME (new)"
+  echo "    Account : $SA_EMAIL (existing, CAE permissions added)"
+else
+  echo "  Resources created in project: $PROJECT_ID"
+  echo "    Role    : projects/$PROJECT_ID/roles/$ROLE_NAME"
+  echo "    Account : $SA_EMAIL"
+fi
 echo ""
 if [[ ${#MISSING_PERMS[@]} -gt 0 ]]; then
-echo "  Note: ${#MISSING_PERMS[@]} permission(s) were unavailable and excluded"
-echo "  from the role. Affected attacks will be skipped at runtime."
-echo ""
+  echo "  Note: ${#MISSING_PERMS[@]} permission(s) were unavailable and excluded"
+  echo "  from the role. Affected attacks will be skipped at runtime."
+  echo ""
 fi
-echo "  Copy the JSON below and paste it into the Mitigant"
-echo "  'Service Account Key' field, then click Connect."
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo ""
-cat "$KEY_FILE"
-echo ""
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo ""
-echo "Note: the key file ($KEY_FILE) is saved in this Cloud Shell"
-echo "session but will not persist after the session ends."
-echo ""
+if [[ -n "${EXISTING_CSPM_SA_EMAIL:-}" ]]; then
+  echo "  CAE permissions have been added to your existing service account."
+  echo "  Return to Mitigant and click Connect (or Enable CAE)."
+  echo "  Your existing CSPM key now has CAE permissions; no new key needed."
+  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+  echo ""
+else
+  echo "  Copy the JSON below and paste it into the Mitigant"
+  echo "  'Service Account Key' field, then click Connect."
+  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+  echo ""
+  cat "$KEY_FILE"
+  echo ""
+  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+  echo ""
+  echo "Note: the key file ($KEY_FILE) is saved in this Cloud Shell"
+  echo "session but will not persist after the session ends."
+  echo ""
+fi
