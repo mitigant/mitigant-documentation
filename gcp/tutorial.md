@@ -7,6 +7,12 @@ Mitigant Cloud Attack Emulation needs in your project. Takes about 2 minutes.
 All resources are named `mitigant-attack-emulation-{suffix}` for easy
 identification in Cloud Audit Logs.
 
+> **Running commands.** Each command in this walkthrough sits in a code
+> block with two icons in the top-right corner. **Click the left icon —
+> "Copy to Cloud Shell"** (terminal-prompt symbol) to paste the command
+> into the terminal. The right icon ("Copy") only copies to clipboard
+> and does not run anything.
+
 ---
 
 ## Step 1 — Authorize Cloud Shell
@@ -18,8 +24,7 @@ your behalf. Standard Google prompt — shown once per session.
 
 ## Step 2 — Confirm your project
 
-Click the **Copy to Cloud Shell** button next to the command below to print
-the currently active GCP project ID:
+Run the command below to print the currently active GCP project ID:
 
 ```bash
 gcloud config get-value project
@@ -36,8 +41,7 @@ gcloud config set project YOUR_PROJECT_ID
 
 ## Step 3 — Run the setup script
 
-Click the **Copy to Cloud Shell** button next to the command below, then press
-**Enter** in the terminal:
+Run the command below, then press **Enter** in the terminal:
 
 ```bash
 bash setup.sh
