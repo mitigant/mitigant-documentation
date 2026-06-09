@@ -50,12 +50,9 @@ bash setup.sh
 The script will:
 
 1. Show the active project and ask you to confirm. Press **Enter** to accept.
-2. Check the project for an existing service account. If one is found,
-   you will be asked whether to add CAE permissions to it. Type **n** and
-   press **Enter** to create a new service account instead.
-3. Create the custom IAM role.
-4. Create the service account and bind the role.
-5. Generate and print a JSON key.
+2. Create the custom IAM role.
+3. Create the service account and bind the role.
+4. Generate and print a JSON key.
 
 ---
 
