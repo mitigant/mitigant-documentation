@@ -1,23 +1,20 @@
 #!/bin/bash
-# Mitigant CAE -- GCP Onboarding Script
+# Mitigant CAE - GCP Onboarding Script
 # Repository: https://github.com/mitigant/mitigant-documentation/tree/main/gcp
 #
-# This script creates a least-privilege custom IAM role, a dedicated
-# service account, and a JSON key for Mitigant Cloud Attack Emulation.
-#
-# Attack execution and safety architecture:
-# https://mitigant.io/en/blog/cloud-attack-emulation-101-shallow-waters#attack-methodology-design-for-safety
+# Creates a least-privilege custom IAM role, a dedicated service account, and
+# a JSON key for Mitigant Cloud Attack Emulation.
 #
 # Telemetry: this script sends run status (run ID, project ID, stage, timestamp)
-# to Mitigant to enable proactive onboarding support. No credentials or
-# sensitive data are transmitted. To opt out: export MITIGANT_NO_TELEMETRY=1
+# to Mitigant for proactive onboarding support. No credentials or sensitive data
+# are transmitted. To opt out: export MITIGANT_NO_TELEMETRY=1
 #
-# Prerequisites: run inside Google Cloud Shell, authenticated to
-# the Google account that has Owner or IAM Admin access to the target project.
+# Prerequisites: run inside Google Cloud Shell, authenticated to the Google
+# account that has Owner or IAM Admin access to the target project.
 
 set -euo pipefail
 
-# ── Helpers ───────────────────────────────────────────────────────────────────
+# ── Helpers ──────────────────────────────────────────────────────────────────
 
 generate_suffix() {
   openssl rand -hex 2
@@ -34,10 +31,6 @@ validate_project_id() {
 }
 
 call_home() {
-  # TODO: restore when api.mitigant.io/onboarding/gcp endpoint is live.
-  # Only fires for production runs (MTG_ENV=production set by the Mitigant frontend).
-  # Dev and manual runs are silent. Backend URL is hardcoded -- never pass it
-  # via cloudshell_command as that would expose it in the browser address bar.
   return 0
 }
 
@@ -64,15 +57,7 @@ attack_group() {
   esac
 }
 
-# ── Suffix and resource names ─────────────────────────────────────────────────
-# A unique 4-character suffix prevents collisions across multiple runs.
-#
-# SA_NAME   : hyphens allowed, 30-char GCP max.
-#             Appears in Cloud Audit Logs as principalEmail -- customers filter
-#             on "mitigant-attack-emulation" to isolate attack traffic.
-# ROLE_NAME : GCP role IDs forbid hyphens, underscores used instead.
-#             Mirrors the AWS "Mitigant-Attack-Emulation" naming convention.
-# KEY_FILE  : local filename only, no GCP constraint.
+# ── Resource names ───────────────────────────────────────────────────────────
 
 SUFFIX=$(generate_suffix)
 SA_NAME="mitigant-attack-emulation-${SUFFIX}"
@@ -82,7 +67,7 @@ KEY_FILE="mitigant-attack-emulation-${SUFFIX}-key.json"
 ERROR_LOG=$(mktemp)
 CURRENT_STAGE="init"
 
-# ── Partial failure cleanup ───────────────────────────────────────────────────
+# ── Partial failure cleanup ──────────────────────────────────────────────────
 
 cleanup() {
   local error_msg=""
@@ -93,19 +78,15 @@ cleanup() {
   echo ""
   call_home "failure" "${CURRENT_STAGE}|${error_msg}"
   echo "Cleaning up partial resources..."
-  # Only delete the SA if we created it. In the existing-CSPM flow the SA
-  # belonged to the customer before this run; never delete it.
-  if [[ -z "${EXISTING_CSPM_SA_EMAIL:-}" ]]; then
-    gcloud iam service-accounts delete "${SA_EMAIL:-placeholder@placeholder.com}" \
-      --quiet 2>/dev/null || true
-  fi
+  gcloud iam service-accounts delete "${SA_EMAIL:-placeholder@placeholder.com}" \
+    --quiet 2>/dev/null || true
   gcloud iam roles delete "$ROLE_NAME" \
     --project="${PROJECT_ID:-}" --quiet 2>/dev/null || true
   rm -f "$ERROR_LOG"
 }
 trap cleanup ERR
 
-# ── Permissions ───────────────────────────────────────────────────────────────
+# ── Permissions ──────────────────────────────────────────────────────────────
 
 PERMISSIONS=(
   resourcemanager.projects.get
@@ -146,28 +127,17 @@ PERMISSIONS=(
   logging.sinks.delete
 )
 
-# ── Step 1: confirm project ───────────────────────────────────────────────────
+# ── Step 1: confirm project ──────────────────────────────────────────────────
 
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "  Mitigant CAE -- GCP Onboarding"
+echo "  Mitigant CAE - GCP Onboarding"
 echo "  Run ID: $SUFFIX"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
 
-# PROJECT_ID resolution order:
-#   1. Environment variable (set directly, e.g. legacy cloudshell_command usage)
-#   2. Temp file written by cloudshell_command from the Mitigant onboarding button
-#   3. Interactive prompt (fallback for manual runs)
-
 if [[ -n "${PROJECT_ID:-}" ]]; then
   echo "Project ID received from Mitigant: $PROJECT_ID"
-  validate_project_id "$PROJECT_ID"
-  gcloud config set project "$PROJECT_ID" --quiet
-elif [[ -f /tmp/.mtg_project_id ]]; then
-  PROJECT_ID=$(tr -d '[:space:]' < /tmp/.mtg_project_id)
-  rm -f /tmp/.mtg_project_id
-  echo "Project ID loaded from Mitigant: $PROJECT_ID"
   validate_project_id "$PROJECT_ID"
   gcloud config set project "$PROJECT_ID" --quiet
 else
@@ -235,7 +205,7 @@ for p in d.get('permissions', []):
 " 2>/dev/null || echo "")
 
 if [[ -z "$AVAILABLE_PERMS" ]]; then
-  echo "Permission probe unavailable -- proceeding with full permission set."
+  echo "Permission probe unavailable, proceeding with full permission set."
   PERMISSIONS_CSV=$(IFS=,; echo "${PERMISSIONS[*]}")
   MISSING_PERMS=()
 else
@@ -266,90 +236,16 @@ else
   echo "All permissions available."
 fi
 
-# ── Step 1c: existing Mitigant CSPM service account check ───────────────────
-# When this project is already onboarded to Mitigant for CSPM, the customer
-# has a service account here that we should reuse rather than creating a
-# duplicate. We list user-managed service accounts (filtering Google's own
-# default SAs) and prompt the customer to confirm. The vast majority of
-# projects will have at most one Mitigant SA, so the Y/n confirmation is the
-# happy path. Projects with multiple user-managed SAs (typically test
-# accounts) fall through to a numbered selection.
-
-CURRENT_STAGE="existing_account_check"
-echo ""
-echo "Checking for an existing Mitigant service account in this project..."
-
-EXISTING_USER_SAS=$(gcloud iam service-accounts list \
-  --project="$PROJECT_ID" \
-  --format="value(email)" 2>/dev/null \
-  | grep -Ev "@(developer|cloudservices|cloudbuild|appspot)\.gserviceaccount\.com$" \
-  || true)
-
-if [[ -z "$EXISTING_USER_SAS" ]]; then
-  CANDIDATE_COUNT=0
-else
-  CANDIDATE_COUNT=$(echo "$EXISTING_USER_SAS" | wc -l | tr -d ' ')
-fi
-
-if [[ "$CANDIDATE_COUNT" -eq 0 ]]; then
-  echo "No existing user-managed service accounts found. A new one will be created."
-  echo ""
-elif [[ "$CANDIDATE_COUNT" -eq 1 ]]; then
-  CANDIDATE_SA="$EXISTING_USER_SAS"
-  echo ""
-  echo "Found one existing service account:"
-  echo ""
-  echo "  ┌─────────────────────────────────────────────────────────────"
-  echo "  │  $CANDIDATE_SA"
-  echo "  └─────────────────────────────────────────────────────────────"
-  echo ""
-  read -r -p "Add CAE permissions to this account? [Y/n]: " confirm
-  if [[ -z "$confirm" || "$confirm" =~ ^[Yy]$ ]]; then
-    EXISTING_CSPM_SA_EMAIL="$CANDIDATE_SA"
-    SA_EMAIL="$EXISTING_CSPM_SA_EMAIL"
-    echo "Will add CAE permissions to: $SA_EMAIL"
-    echo ""
-  else
-    echo "Will create a new service account."
-    echo ""
-  fi
-else
-  echo ""
-  echo "Found $CANDIDATE_COUNT existing service accounts:"
-  echo ""
-  i=1
-  while IFS= read -r sa; do
-    printf "  [%d] %s\n" "$i" "$sa"
-    i=$((i + 1))
-  done <<< "$EXISTING_USER_SAS"
-  echo ""
-  read -r -p "Add CAE permissions to which account? (enter a number, or press Enter to create new): " selection
-  if [[ -n "$selection" && "$selection" =~ ^[0-9]+$ \
-        && "$selection" -ge 1 && "$selection" -le "$CANDIDATE_COUNT" ]]; then
-    EXISTING_CSPM_SA_EMAIL=$(echo "$EXISTING_USER_SAS" | sed -n "${selection}p")
-    SA_EMAIL="$EXISTING_CSPM_SA_EMAIL"
-    echo "Will add CAE permissions to: $SA_EMAIL"
-    echo ""
-  else
-    echo "Will create a new service account."
-    echo ""
-  fi
-fi
-
 echo ""
 echo "Project  : $PROJECT_ID"
 echo "Role     : $ROLE_NAME"
-if [[ -n "${EXISTING_CSPM_SA_EMAIL:-}" ]]; then
-  echo "Account  : $SA_EMAIL (existing, CAE permissions will be added)"
-else
-  echo "Account  : $SA_NAME (new)"
-  echo "Key file : $KEY_FILE"
-fi
+echo "Account  : $SA_NAME"
+echo "Key file : $KEY_FILE"
 echo ""
 
 call_home "start"
 
-# ── Step 2: create custom role ────────────────────────────────────────────────
+# ── Step 2: create custom role ───────────────────────────────────────────────
 
 CURRENT_STAGE="role_create"
 echo "Creating custom role..."
@@ -367,40 +263,36 @@ echo "Role created: projects/$PROJECT_ID/roles/$ROLE_NAME"
 echo ""
 
 # ── Step 3: create service account ───────────────────────────────────────────
-# Skipped in the existing-CSPM flow -- SA_EMAIL was set during the existing
-# account check above.
 
-if [[ -z "${EXISTING_CSPM_SA_EMAIL:-}" ]]; then
-  CURRENT_STAGE="sa_create"
-  echo "Creating service account..."
-  echo ""
+CURRENT_STAGE="sa_create"
+echo "Creating service account..."
+echo ""
 
-  SA_EMAIL="${SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com"
+SA_EMAIL="${SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com"
 
-  gcloud iam service-accounts create "$SA_NAME" \
-    --project="$PROJECT_ID" \
-    --display-name="Mitigant Attack Emulation" \
-    --quiet 2>"$ERROR_LOG"
+gcloud iam service-accounts create "$SA_NAME" \
+  --project="$PROJECT_ID" \
+  --display-name="Mitigant Attack Emulation" \
+  --quiet 2>"$ERROR_LOG"
 
-  echo "Service account created: $SA_EMAIL"
-  echo ""
+echo "Service account created: $SA_EMAIL"
+echo ""
 
-  # GCP IAM is eventually consistent. Poll until the SA is accessible before binding.
-  echo "Waiting for service account to propagate..."
-  for i in 1 2 3 4 5 6; do
-    if gcloud iam service-accounts describe "$SA_EMAIL" \
-        --project="$PROJECT_ID" --quiet > /dev/null 2>&1; then
-      break
-    fi
-    if [[ $i -eq 6 ]]; then
-      echo "Service account did not propagate in time. Please re-run the script."
-      exit 1
-    fi
-    echo "  Not yet available, retrying in 5s ($i/6)..."
-    sleep 5
-  done
-  echo ""
-fi
+# GCP IAM is eventually consistent. Poll until the SA is accessible.
+echo "Waiting for service account to propagate..."
+for i in 1 2 3 4 5 6; do
+  if gcloud iam service-accounts describe "$SA_EMAIL" \
+      --project="$PROJECT_ID" --quiet > /dev/null 2>&1; then
+    break
+  fi
+  if [[ $i -eq 6 ]]; then
+    echo "Service account did not propagate in time. Please re-run the script."
+    exit 1
+  fi
+  echo "  Not yet available, retrying in 5s ($i/6)..."
+  sleep 5
+done
+echo ""
 
 # ── Step 4: bind role to service account ─────────────────────────────────────
 
@@ -408,18 +300,13 @@ CURRENT_STAGE="binding"
 echo "Binding role to service account..."
 echo ""
 
-# --condition=None is required when the project IAM policy already contains
-# condition-based bindings; without it gcloud refuses in non-interactive mode.
 gcloud projects add-iam-policy-binding "$PROJECT_ID" \
   --member="serviceAccount:${SA_EMAIL}" \
   --role="projects/${PROJECT_ID}/roles/${ROLE_NAME}" \
   --condition=None \
   --quiet > /dev/null 2>"$ERROR_LOG"
 
-# resourcemanager.tagBindings.list is not grantable in custom roles, only via
-# the predefined roles/resourcemanager.tagViewer. Bind it separately so the
-# tag-based exemption filter can read tag bindings on individual resources
-# during attack target resolution.
+# tagBindings.list is not grantable in custom roles; granted via tagViewer.
 gcloud projects add-iam-policy-binding "$PROJECT_ID" \
   --member="serviceAccount:${SA_EMAIL}" \
   --role="roles/resourcemanager.tagViewer" \
@@ -429,20 +316,15 @@ gcloud projects add-iam-policy-binding "$PROJECT_ID" \
 echo "Role bound."
 echo ""
 
-# ── Step 5: create JSON key ───────────────────────────────────────────────────
-# Skipped in the existing-CSPM flow -- the SA already has a key that the
-# customer uploaded during CSPM onboarding; that same key gains CAE access
-# once the new role is bound.
+# ── Step 5: create JSON key ──────────────────────────────────────────────────
 
-if [[ -z "${EXISTING_CSPM_SA_EMAIL:-}" ]]; then
-  CURRENT_STAGE="key_create"
-  echo "Generating JSON key..."
-  echo ""
+CURRENT_STAGE="key_create"
+echo "Generating JSON key..."
+echo ""
 
-  gcloud iam service-accounts keys create "$KEY_FILE" \
-    --iam-account="$SA_EMAIL" \
-    --quiet 2>"$ERROR_LOG"
-fi
+gcloud iam service-accounts keys create "$KEY_FILE" \
+  --iam-account="$SA_EMAIL" \
+  --quiet 2>"$ERROR_LOG"
 
 rm -f "$ERROR_LOG"
 call_home "success"
@@ -450,37 +332,23 @@ call_home "success"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "  Setup complete.  Run ID: $SUFFIX"
 echo ""
-if [[ -n "${EXISTING_CSPM_SA_EMAIL:-}" ]]; then
-  echo "  Updated resources in project: $PROJECT_ID"
-  echo "    Role    : projects/$PROJECT_ID/roles/$ROLE_NAME (new)"
-  echo "    Account : $SA_EMAIL (existing, CAE permissions added)"
-else
-  echo "  Resources created in project: $PROJECT_ID"
-  echo "    Role    : projects/$PROJECT_ID/roles/$ROLE_NAME"
-  echo "    Account : $SA_EMAIL"
-fi
+echo "  Resources created in project: $PROJECT_ID"
+echo "    Role    : projects/$PROJECT_ID/roles/$ROLE_NAME"
+echo "    Account : $SA_EMAIL"
 echo ""
 if [[ ${#MISSING_PERMS[@]} -gt 0 ]]; then
   echo "  Note: ${#MISSING_PERMS[@]} permission(s) were unavailable and excluded"
   echo "  from the role. Affected attacks will be skipped at runtime."
   echo ""
 fi
-if [[ -n "${EXISTING_CSPM_SA_EMAIL:-}" ]]; then
-  echo "  CAE permissions have been added to your existing service account."
-  echo "  Return to Mitigant and click Connect (or Enable CAE)."
-  echo "  Your existing CSPM key now has CAE permissions; no new key needed."
-  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-  echo ""
-else
-  echo "  Copy the JSON below and paste it into the Mitigant"
-  echo "  'Service Account Key' field, then click Connect."
-  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-  echo ""
-  cat "$KEY_FILE"
-  echo ""
-  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-  echo ""
-  echo "Note: the key file ($KEY_FILE) is saved in this Cloud Shell"
-  echo "session but will not persist after the session ends."
-  echo ""
-fi
+echo "  Copy the JSON below and paste it into the Mitigant"
+echo "  'Service Account Key' field, then click Connect."
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo ""
+cat "$KEY_FILE"
+echo ""
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo ""
+echo "Note: the key file ($KEY_FILE) is saved in this Cloud Shell"
+echo "session but will not persist after the session ends."
+echo ""
