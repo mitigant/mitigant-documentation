@@ -281,15 +281,28 @@ gcloud iam service-accounts create "$SA_NAME" \
 echo "Service account created: $SA_EMAIL"
 echo ""
 
-# GCP IAM is eventually consistent. Poll until the SA is accessible.
+# GCP IAM is eventually consistent. Poll until the SA is accessible. The poll
+# captures stderr separately so it can distinguish between permission-denied
+# (no point retrying, exit with the actual error) and the SA not yet being
+# visible (real propagation lag, keep retrying).
 echo "Waiting for service account to propagate..."
 for i in 1 2 3 4 5 6; do
   if gcloud iam service-accounts describe "$SA_EMAIL" \
-      --project="$PROJECT_ID" --quiet > /dev/null 2>&1; then
+      --project="$PROJECT_ID" --quiet > /dev/null 2>"$ERROR_LOG"; then
     break
+  fi
+  describe_err=$(head -3 "$ERROR_LOG" | tr '\n' ' ')
+  if echo "$describe_err" | grep -qiE "permission|forbidden|denied"; then
+    echo ""
+    echo "Error: cannot describe the new service account."
+    echo "       Your Google account is missing the 'iam.serviceAccounts.get'"
+    echo "       permission needed to read the SA after creation."
+    echo "       Detail: $describe_err"
+    exit 1
   fi
   if [[ $i -eq 6 ]]; then
     echo "Service account did not propagate in time. Please re-run the script."
+    [[ -n "$describe_err" ]] && echo "Last error: $describe_err"
     exit 1
   fi
   echo "  Not yet available, retrying in 5s ($i/6)..."
