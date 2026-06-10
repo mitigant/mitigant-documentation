@@ -204,36 +204,39 @@ for p in d.get('permissions', []):
     print(p)
 " 2>/dev/null || echo "")
 
+# The custom role always includes the full required permission set. The probe
+# above is informational only: testIamPermissions at project scope is
+# unreliable for permissions that are scoped on individual resources (notably
+# storage.buckets.{get,update}, storage.objects.get, and
+# iam.serviceAccounts.getAccessToken), so filtering the role's permission list
+# based on the probe would silently strip permissions that the customer
+# actually has access to. Custom-role creation itself does not require the
+# caller to hold the permissions being included; if anything else later
+# blocks the run, the failure surfaces with a clear gcloud error.
+PERMISSIONS_CSV=$(IFS=,; echo "${PERMISSIONS[*]}")
+
+MISSING_PERMS=()
 if [[ -z "$AVAILABLE_PERMS" ]]; then
-  echo "Permission probe unavailable, proceeding with full permission set."
-  PERMISSIONS_CSV=$(IFS=,; echo "${PERMISSIONS[*]}")
-  MISSING_PERMS=()
+  echo "Permission probe unavailable. Proceeding with the full permission set."
 else
-  MISSING_PERMS=()
   for perm in "${PERMISSIONS[@]}"; do
     if ! echo "$AVAILABLE_PERMS" | grep -qx "$perm"; then
       MISSING_PERMS+=("$perm")
     fi
   done
-  PERMISSIONS_CSV=$(echo "$AVAILABLE_PERMS" | tr '\n' ',' | sed 's/,$//')
-fi
-
-if [[ ${#MISSING_PERMS[@]} -gt 0 ]]; then
-  echo ""
-  echo "Warning: ${#MISSING_PERMS[@]} permission(s) not available to your account."
-  echo "The following attacks will be skipped at runtime:"
-  echo ""
-  for perm in "${MISSING_PERMS[@]}"; do
-    printf "  %-55s %s\n" "$perm" "[$(attack_group "$perm")]"
-  done
-  echo ""
-  echo "Onboarding will continue with available permissions."
-  echo "Skipped attacks will be reported in the Mitigant dashboard."
-  echo ""
-  MISSING_CSV=$(IFS=,; echo "${MISSING_PERMS[*]}")
-  call_home "partial_permissions" "$MISSING_CSV"
-else
-  echo "All permissions available."
+  if [[ ${#MISSING_PERMS[@]} -gt 0 ]]; then
+    echo ""
+    echo "Note: ${#MISSING_PERMS[@]} permission(s) were not reported as held at"
+    echo "project scope by your Google account. Some are GCP testIamPermissions"
+    echo "quirks (Owner role does cover them in practice). They are included"
+    echo "in the role regardless. The Mitigant dashboard will flag any that"
+    echo "actually remain ungranted after the service account is in use."
+    echo ""
+    MISSING_CSV=$(IFS=,; echo "${MISSING_PERMS[*]}")
+    call_home "partial_permissions" "$MISSING_CSV"
+  else
+    echo "All permissions available."
+  fi
 fi
 
 echo ""
@@ -310,6 +313,16 @@ gcloud projects add-iam-policy-binding "$PROJECT_ID" \
 gcloud projects add-iam-policy-binding "$PROJECT_ID" \
   --member="serviceAccount:${SA_EMAIL}" \
   --role="roles/resourcemanager.tagViewer" \
+  --condition=None \
+  --quiet > /dev/null 2>"$ERROR_LOG"
+
+# iam.serviceAccounts.getAccessToken is not granted by the Owner basic role
+# at project scope, so even a customer running this script as project Owner
+# cannot put it into the custom role. Bind serviceAccountTokenCreator to the
+# new account directly so service-account-impersonation attacks can run.
+gcloud projects add-iam-policy-binding "$PROJECT_ID" \
+  --member="serviceAccount:${SA_EMAIL}" \
+  --role="roles/iam.serviceAccountTokenCreator" \
   --condition=None \
   --quiet > /dev/null 2>"$ERROR_LOG"
 
