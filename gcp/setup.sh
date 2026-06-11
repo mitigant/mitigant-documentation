@@ -133,7 +133,6 @@ PERMISSIONS=(
   compute.disks.getIamPolicy
   compute.disks.setIamPolicy
   iam.roles.list
-  resourcemanager.projects.testIamPermissions
   pubsub.topics.list
   pubsub.topics.getIamPolicy
   logging.sinks.list
