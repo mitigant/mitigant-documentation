@@ -52,6 +52,13 @@ attack_group() {
     secretmanager.secrets.get|secretmanager.secrets.list|\
     secretmanager.versions.access)
       echo "Malicious Secret Retrieval" ;;
+    compute.disks.list|compute.disks.get|\
+    compute.disks.getIamPolicy|compute.disks.setIamPolicy)
+      echo "Compute Disk Share Exfiltration" ;;
+    iam.roles.list|resourcemanager.projects.testIamPermissions)
+      echo "GCP Permission Discovery" ;;
+    pubsub.topics.list|pubsub.topics.getIamPolicy)
+      echo "Pub/Sub Topic Enumeration" ;;
     *)
       echo "CSPM detection" ;;
   esac
@@ -121,6 +128,13 @@ PERMISSIONS=(
   secretmanager.secrets.get
   secretmanager.secrets.list
   secretmanager.versions.access
+  compute.disks.list
+  compute.disks.get
+  compute.disks.getIamPolicy
+  compute.disks.setIamPolicy
+  iam.roles.list
+  pubsub.topics.list
+  pubsub.topics.getIamPolicy
   logging.sinks.list
   logging.sinks.get
   logging.sinks.create
