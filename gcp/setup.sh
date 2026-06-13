@@ -139,6 +139,14 @@ PERMISSIONS=(
   logging.sinks.get
   logging.sinks.create
   logging.sinks.delete
+  run.services.list
+  run.services.get
+  run.services.update
+  iam.serviceAccounts.actAs
+  iam.workloadIdentityPools.create
+  iam.workloadIdentityPools.delete
+  iam.workloadIdentityPoolProviders.create
+  iam.workloadIdentityPoolProviders.delete
 )
 
 # ── Step 1: confirm project ──────────────────────────────────────────────────
