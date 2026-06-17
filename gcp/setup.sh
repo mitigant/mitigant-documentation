@@ -31,6 +31,38 @@ validate_project_id() {
 }
 
 call_home() {
+  if [[ "${MITIGANT_NO_TELEMETRY:-0}" == "1" ]]; then
+    return 0
+  fi
+
+  local event_type="${1^^}"
+  local extra="${2:-}"
+  local stage=""
+  local payload=""
+
+  if [[ "$event_type" == "FAILURE" && "$extra" == *"|"* ]]; then
+    stage="${extra%%|*}"
+    payload="${extra#*|}"
+  elif [[ -n "$extra" ]]; then
+    payload="$extra"
+  fi
+
+  local body
+  body=$(python3 -c "
+import json, sys
+d = {'runId': sys.argv[1], 'projectId': sys.argv[2], 'eventType': sys.argv[3]}
+if sys.argv[4]: d['stage'] = sys.argv[4][:64]
+if sys.argv[5]: d['payload'] = sys.argv[5][:1024]
+print(json.dumps(d))
+" "$SUFFIX" "${PROJECT_ID:-}" "$event_type" "$stage" "$payload" 2>/dev/null) || return 0
+
+  curl -sf -X POST \
+    "${MITIGANT_API_BASE:-https://app.mitigant.io}/api/v1/onboarding/gcp/telemetry" \
+    -H "Content-Type: application/json" \
+    -d "$body" \
+    --max-time 5 \
+    > /dev/null 2>&1 &
+
   return 0
 }
 
