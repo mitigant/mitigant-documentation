@@ -179,6 +179,17 @@ PERMISSIONS=(
   iam.workloadIdentityPools.delete
   iam.workloadIdentityPoolProviders.create
   iam.workloadIdentityPoolProviders.delete
+  cloudkms.keyRings.list
+  cloudkms.cryptoKeys.list
+  cloudkms.cryptoKeys.getIamPolicy
+  cloudsql.instances.list
+  bigquery.datasets.get
+  bigquery.tables.list
+  bigquery.tables.get
+  compute.images.list
+  compute.images.getIamPolicy
+  recommender.iamPolicyInsights.list
+  essentialcontacts.contacts.list
 )
 
 # ── Step 1: confirm project ──────────────────────────────────────────────────
