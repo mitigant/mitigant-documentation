@@ -190,6 +190,10 @@ PERMISSIONS=(
   compute.images.getIamPolicy
   recommender.iamPolicyInsights.list
   essentialcontacts.contacts.list
+  cloudscheduler.locations.list
+  cloudscheduler.jobs.create
+  cloudscheduler.jobs.run
+  cloudscheduler.jobs.delete
 )
 
 # ── Step 1: confirm project ──────────────────────────────────────────────────
