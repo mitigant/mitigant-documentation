@@ -81,6 +81,8 @@ attack_group() {
       echo "Public GCS Bucket / Disable Bucket Logging" ;;
     storage.objects.get|storage.objects.list)
       echo "GCS Object Exfiltration" ;;
+    storage.objects.create|storage.objects.delete)
+      echo "GCS Bucket Encryption" ;;
     secretmanager.secrets.get|secretmanager.secrets.list|\
     secretmanager.versions.access)
       echo "Malicious Secret Retrieval" ;;
@@ -157,6 +159,8 @@ PERMISSIONS=(
   storage.buckets.update
   storage.objects.get
   storage.objects.list
+  storage.objects.create
+  storage.objects.delete
   secretmanager.secrets.get
   secretmanager.secrets.list
   secretmanager.versions.access
