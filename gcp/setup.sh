@@ -196,7 +196,6 @@ PERMISSIONS=(
   essentialcontacts.contacts.list
   cloudscheduler.locations.list
   cloudscheduler.jobs.create
-  cloudscheduler.jobs.run
   cloudscheduler.jobs.delete
 )
 
